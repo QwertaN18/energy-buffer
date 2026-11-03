@@ -59,20 +59,24 @@ def main():
     except Exception:
         pass
 
-    print("Запускаем антидетект-браузер Camoufox...")
-    with Camoufox(headless="virtual", humanize=True) as browser:
+    print("Запускаем Camoufox через Cloudflare WARP...")
+    with Camoufox(headless="virtual", humanize=True, geoip=True) as browser:
         page = browser.new_page()
 
         for q in QUEUES:
             url = f"{BASE_URL}/{q.replace('.', '-')}"
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=25000)
-                
-                # Ждём до 10 секунд, если появилась страница проверки Cloudflare
-                for _ in range(5):
+
+                for _ in range(6):
                     title = page.title()
                     if "Just a moment" not in title:
                         break
+                    # Пробуем кликнуть по координатам чекбокса Cloudflare Turnstile
+                    try:
+                        page.mouse.click(210, 290)
+                    except Exception:
+                        pass
                     time.sleep(2)
 
                 html = page.content()
@@ -90,7 +94,7 @@ def main():
                     snippet = " ".join(body_text.split())[:150]
                     print(f"  -> [WARN] Раздел не найден. Текст: {snippet}")
                     if "Just a moment" in page_title:
-                        print("[STOP] Cloudflare всё ещё держит оборону. Останавливаемся, чтобы не ждать.")
+                        print("[STOP] Cloudflare не пропустил на первой очереди, выходим без ожидания.")
                         break
             except Exception as e:
                 print(f"[{q}] ERROR: {e}")
