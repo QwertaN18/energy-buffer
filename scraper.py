@@ -6,8 +6,6 @@ from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup
 from DrissionPage import ChromiumPage, ChromiumOptions
 
-# Обрати внимание: если на главной energy-ua.info нужен поддомен Полтавы (например, poltava.energy-ua.info),
-# проверь точный адрес в адресной строке своего браузера!
 BASE_URL = "https://energy-ua.info/cherga"
 
 QUEUES = [
@@ -54,9 +52,8 @@ def wait_for_cloudflare(page: ChromiumPage):
         title = page.title or ""
         if "Just a moment" not in title and "Attention Required" not in title:
             return True
-        # Если есть чекбокс Turnstile — пробуем кликнуть
         try:
-             iframe = page.get_frame('@src^https://challenges.cloudflare.com')
+            iframe = page.get_frame('@src^https://challenges.cloudflare.com')
             if iframe:
                 cb = iframe.ele('tag:input', timeout=1)
                 if cb:
