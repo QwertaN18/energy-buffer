@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup
-from DrissionPage import ChromiumPage, ChromiumOptions
+from camoufox.sync_api import Camoufox
 
 BASE_URL = "https://energy-ua.info/cherga"
 
@@ -47,22 +47,6 @@ def extract_outages(page_text: str):
     intervals.sort(key=lambda x: x["start"])
     return intervals
 
-def wait_for_cloudflare(page: ChromiumPage):
-    for _ in range(15):
-        title = page.title or ""
-        if "Just a moment" not in title and "Attention Required" not in title:
-            return True
-        try:
-            iframe = page.get_frame('@src^https://challenges.cloudflare.com')
-            if iframe:
-                cb = iframe.ele('tag:input', timeout=1)
-                if cb:
-                    cb.click()
-        except Exception:
-            pass
-        time.sleep(2)
-    return False
-
 def main():
     kyiv_now = datetime.now(ZoneInfo("Europe/Kyiv"))
     result_queues = {}
@@ -75,39 +59,41 @@ def main():
     except Exception:
         pass
 
-    co = ChromiumOptions()
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-gpu')
-    co.set_argument('--lang=uk-UA')
+    print("Запускаем антидетект-браузер Camoufox...")
+    with Camoufox(headless="virtual", humanize=True) as browser:
+        page = browser.new_page()
 
-    page = ChromiumPage(co)
-
-    try:
         for q in QUEUES:
             url = f"{BASE_URL}/{q.replace('.', '-')}"
             try:
-                page.get(url, timeout=25)
-                wait_for_cloudflare(page)
-                time.sleep(1)
+                page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                
+                # Ждём до 10 секунд, если появилась страница проверки Cloudflare
+                for _ in range(5):
+                    title = page.title()
+                    if "Just a moment" not in title:
+                        break
+                    time.sleep(2)
 
-                html = page.html
+                html = page.content()
                 soup = BeautifulSoup(html, "html.parser")
                 page_title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
                 body_text = soup.get_text(separator="\n")
 
-                print(f"[{q}] URL: {url} | Title: {page_title}")
+                print(f"[{q}] Title: {page_title}")
 
                 parsed = extract_outages(body_text)
                 if parsed is not None:
                     result_queues[q] = parsed
                     print(f"  -> [OK] Найдено отключений: {len(parsed)} -> {parsed}")
                 else:
-                    snippet = " ".join(body_text.split())[:200]
-                    print(f"  -> [WARN] Заголовок '{HEADING}' не найден! Текст: {snippet}")
+                    snippet = " ".join(body_text.split())[:150]
+                    print(f"  -> [WARN] Раздел не найден. Текст: {snippet}")
+                    if "Just a moment" in page_title:
+                        print("[STOP] Cloudflare всё ещё держит оборону. Останавливаемся, чтобы не ждать.")
+                        break
             except Exception as e:
                 print(f"[{q}] ERROR: {e}")
-    finally:
-        page.quit()
 
     payload = {
         "updated_at": kyiv_now.strftime("%H:%M:%S"),
