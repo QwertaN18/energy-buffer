@@ -20,11 +20,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install curl_cffi beautifulsoup4
+      - name: Install Chrome & DrissionPage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          pip install DrissionPage beautifulsoup4
 
-      - name: Run scraper
-        run: python scraper.py
+      - name: Run scraper with virtual display
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" python scraper.py
 
       - name: Commit and push schedule.json
         run: |
