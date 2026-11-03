@@ -2,11 +2,11 @@ name: Update Electricity Schedule
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # Каждые 20 минут
-  workflow_dispatch:       # Позволяет запускать вручную кнопкой
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 permissions:
-  contents: write          # Разрешаем роботу сохранять schedule.json в репозиторий
+  contents: write
 
 jobs:
   scrape:
@@ -20,10 +20,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Playwright
-        run: |
-          pip install playwright
-          playwright install --with-deps chromium
+      - name: Install dependencies
+        run: pip install curl_cffi beautifulsoup4
 
       - name: Run scraper
         run: python scraper.py
