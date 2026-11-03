@@ -47,6 +47,26 @@ def extract_outages(page_text: str):
     intervals.sort(key=lambda x: x["start"])
     return intervals
 
+def bypass_turnstile(page):
+    for attempt in range(10):
+        title = page.title()
+        if "Just a moment" not in title and "Performing security" not in title:
+            return True
+
+        # Ищем фрейм Cloudflare Turnstile и кликаем точно по чекбоксу
+        for frame in page.frames:
+            if "challenges.cloudflare.com" in frame.url:
+                try:
+                    box = frame.frame_element().bounding_box()
+                    if box:
+                        # Чекбокс находится примерно в 30px от левого края и по центру высоты виджета
+                        page.mouse.click(box["x"] + 30, box["y"] + box["height"] / 2)
+                        print(f"  [CF] Кликнули по чекбоксу Turnstile (попытка {attempt + 1})")
+                except Exception:
+                    pass
+        time.sleep(3)
+    return False
+
 def main():
     kyiv_now = datetime.now(ZoneInfo("Europe/Kyiv"))
     result_queues = {}
@@ -59,24 +79,21 @@ def main():
     except Exception:
         pass
 
-    print("Запускаем Camoufox через Cloudflare WARP...")
-    with Camoufox(headless="virtual", humanize=True) as browser:
+    print("Запускаем Camoufox (os=linux, disable_coop=True)...")
+    with Camoufox(
+        os="linux",
+        headless="virtual",
+        humanize=True,
+        config={"disable_coop": True}
+    ) as browser:
         page = browser.new_page()
 
         for q in QUEUES:
             url = f"{BASE_URL}/{q.replace('.', '-')}"
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=25000)
-
-                for _ in range(6):
-                    title = page.title()
-                    if "Just a moment" not in title:
-                        break
-                    try:
-                        page.mouse.click(210, 290)
-                    except Exception:
-                        pass
-                    time.sleep(2)
+                time.sleep(2)
+                bypass_turnstile(page)
 
                 html = page.content()
                 soup = BeautifulSoup(html, "html.parser")
@@ -93,7 +110,7 @@ def main():
                     snippet = " ".join(body_text.split())[:150]
                     print(f"  -> [WARN] Раздел не найден. Текст: {snippet}")
                     if "Just a moment" in page_title:
-                        print("[STOP] Cloudflare не пропустил на первой очереди, выходим без ожидания.")
+                        print("[STOP] Cloudflare не пропустил на первой очереди, выходим.")
                         break
             except Exception as e:
                 print(f"[{q}] ERROR: {e}")
