@@ -16,16 +16,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Cloudflare WARP (меняем IP дата-центра)
+        uses: Boostport/setup-cloudflare-warp@v1
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Camoufox
+      - name: Install Camoufox & dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libasound2 libdbus-glib-1-2
-          pip install -U camoufox[geoip] beautifulsoup4
+          pip install -U camoufox[geoip] playwright beautifulsoup4
+          playwright install-deps firefox
+          sudo apt-get install -y xvfb
           python -m camoufox fetch
 
       - name: Run scraper
