@@ -60,7 +60,7 @@ def main():
         pass
 
     print("Запускаем Camoufox через Cloudflare WARP...")
-    with Camoufox(headless="virtual", humanize=True, geoip=True) as browser:
+    with Camoufox(headless="virtual", humanize=True) as browser:
         page = browser.new_page()
 
         for q in QUEUES:
@@ -72,7 +72,6 @@ def main():
                     title = page.title()
                     if "Just a moment" not in title:
                         break
-                    # Пробуем кликнуть по координатам чекбокса Cloudflare Turnstile
                     try:
                         page.mouse.click(210, 290)
                     except Exception:
