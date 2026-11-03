@@ -4,9 +4,12 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup
-from curl_cffi import requests
+from DrissionPage import ChromiumPage, ChromiumOptions
 
+# Обрати внимание: если на главной energy-ua.info нужен поддомен Полтавы (например, poltava.energy-ua.info),
+# проверь точный адрес в адресной строке своего браузера!
 BASE_URL = "https://energy-ua.info/cherga"
+
 QUEUES = [
     "1.1", "1.2",
     "2.1", "2.2",
@@ -23,7 +26,7 @@ PATTERN = re.compile(r"З\s*(\d{1,2}):(\d{2})\s+до\s+(\d{1,2}):(\d{2})", re.IG
 def extract_outages(page_text: str):
     start_idx = page_text.lower().find(HEADING.lower())
     if start_idx < 0:
-        return None  # Раздел вообще не найден (например, страница заблокирована)
+        return None
 
     after_heading = page_text[start_idx + len(HEADING):]
     end_idx = len(after_heading)
@@ -46,6 +49,23 @@ def extract_outages(page_text: str):
     intervals.sort(key=lambda x: x["start"])
     return intervals
 
+def wait_for_cloudflare(page: ChromiumPage):
+    for _ in range(15):
+        title = page.title or ""
+        if "Just a moment" not in title and "Attention Required" not in title:
+            return True
+        # Если есть чекбокс Turnstile — пробуем кликнуть
+        try:
+             iframe = page.get_frame('@src^https://challenges.cloudflare.com')
+            if iframe:
+                cb = iframe.ele('tag:input', timeout=1)
+                if cb:
+                    cb.click()
+        except Exception:
+            pass
+        time.sleep(2)
+    return False
+
 def main():
     kyiv_now = datetime.now(ZoneInfo("Europe/Kyiv"))
     result_queues = {}
@@ -58,31 +78,39 @@ def main():
     except Exception:
         pass
 
-    # impersonate="chrome120" полностью копирует TLS-отпечаток браузера Chrome для обхода Cloudflare
-    session = requests.Session(impersonate="chrome120")
+    co = ChromiumOptions()
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-gpu')
+    co.set_argument('--lang=uk-UA')
 
-    for q in QUEUES:
-        url = f"{BASE_URL}/{q.replace('.', '-')}"
-        try:
-            resp = session.get(url, timeout=20)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            page_title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
-            body_text = soup.get_text(separator="\n")
+    page = ChromiumPage(co)
 
-            print(f"[{q}] URL: {url} | HTTP {resp.status_code} | Title: {page_title}")
+    try:
+        for q in QUEUES:
+            url = f"{BASE_URL}/{q.replace('.', '-')}"
+            try:
+                page.get(url, timeout=25)
+                wait_for_cloudflare(page)
+                time.sleep(1)
 
-            parsed = extract_outages(body_text)
-            if parsed is not None:
-                result_queues[q] = parsed
-                print(f"  -> [OK] Найдено отключений: {len(parsed)}")
-            else:
-                # Выводим первые 200 символов текста страницы, чтобы понять, что именно вернул сайт
-                snippet = " ".join(body_text.split())[:200]
-                print(f"  -> [WARN] Заголовок '{HEADING}' не найден! Текст на странице: {snippet}")
-        except Exception as e:
-            print(f"[{q}] ERROR: {e}")
+                html = page.html
+                soup = BeautifulSoup(html, "html.parser")
+                page_title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
+                body_text = soup.get_text(separator="\n")
 
-        time.sleep(1)
+                print(f"[{q}] URL: {url} | Title: {page_title}")
+
+                parsed = extract_outages(body_text)
+                if parsed is not None:
+                    result_queues[q] = parsed
+                    print(f"  -> [OK] Найдено отключений: {len(parsed)} -> {parsed}")
+                else:
+                    snippet = " ".join(body_text.split())[:200]
+                    print(f"  -> [WARN] Заголовок '{HEADING}' не найден! Текст: {snippet}")
+            except Exception as e:
+                print(f"[{q}] ERROR: {e}")
+    finally:
+        page.quit()
 
     payload = {
         "updated_at": kyiv_now.strftime("%H:%M:%S"),
