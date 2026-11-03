@@ -11,6 +11,7 @@ permissions:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,14 +21,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Chrome & DrissionPage
+      - name: Install Camoufox
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
-          pip install DrissionPage beautifulsoup4
+          sudo apt-get install -y xvfb libgtk-3-0 libasound2 libdbus-glib-1-2
+          pip install -U camoufox[geoip] beautifulsoup4
+          python -m camoufox fetch
 
-      - name: Run scraper with virtual display
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" python scraper.py
+      - name: Run scraper
+        run: xvfb-run -a python -u scraper.py
 
       - name: Commit and push schedule.json
         run: |
